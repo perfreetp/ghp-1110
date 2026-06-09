@@ -122,7 +122,7 @@ export default function FacilitiesPage() {
   const hasMore = filteredFacilities.length > DISPLAY_COUNT;
 
   const handleCardClick = (id: string) => {
-    navigate(`/facility/${id}`);
+    navigate(`/facilities/${id}`);
   };
 
   const handleTypeTabChange = (type: FacilityType | 'all') => {

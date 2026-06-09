@@ -71,7 +71,7 @@ export default function ScanPage() {
   const handleViewDetail = () => {
     if (recognizedFacility) {
       setShowResultModal(false);
-      navigate(`/facility/${recognizedFacility.id}`);
+      navigate(`/facilities/${recognizedFacility.id}`);
     }
   };
 

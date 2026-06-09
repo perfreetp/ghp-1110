@@ -637,7 +637,7 @@ export default function MessagesPage() {
 
   const handleJumpToRelated = (type: string, id: string) => {
     if (type === 'task') {
-      navigate('/tasks');
+      navigate('/');
     } else if (type === 'rectification') {
       navigate('/rectification');
     } else if (type === 'hazard') {

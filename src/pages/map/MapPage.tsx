@@ -21,6 +21,7 @@ import {
   Eye,
   Edit3,
   Filter,
+  CheckCircle2,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Card, StatusBadge, Tag, EmptyState, Modal, InfoRow, Divider } from '@/components/ui';
@@ -98,6 +99,9 @@ export default function MapPage() {
   const endTrack = useAppStore((s) => s.endTrack);
   const addTrackPoint = useAppStore((s) => s.addTrackPoint);
   const setSelectedFacilityId = useAppStore((s) => s.setSelectedFacilityId);
+  const addFacility = useAppStore((s) => s.addFacility);
+  const navTarget = useAppStore((s) => s.navTarget);
+  const clearNavTarget = useAppStore((s) => s.clearNavTarget);
 
   const [searchKeyword, setSearchKeyword] = useState('');
   const [activeLayers, setActiveLayers] = useState<Set<LayerType>>(new Set(['facilities', 'heatmap', 'track']));
@@ -266,6 +270,26 @@ export default function MapPage() {
   };
 
   const handleConfirmAddPin = () => {
+    if (!longPressPos || !newPinName.trim()) return;
+    const newId = addFacility({
+      name: newPinName.trim(),
+      type: newPinType,
+      status: 'normal',
+      location: `自定义采集：${newPinName.trim()}`,
+      lat: longPressPos.lat,
+      lng: longPressPos.lng,
+      installDate: new Date().toISOString().slice(0, 10),
+      lastMaintain: new Date().toISOString().slice(0, 10),
+      maintainer: useAppStore.getState().user?.name || '网格员',
+      maintainerPhone: useAppStore.getState().user?.phone || '',
+      lastInspector: useAppStore.getState().user?.name || '网格员',
+      lastInspectTime: new Date().toISOString(),
+    });
+    if (newId) {
+      setSelectedFacilityId(newId);
+      const newFacility = useAppStore.getState().facilities.find((f) => f.id === newId);
+      if (newFacility) setSelectedFacility(newFacility);
+    }
     setShowAddPinModal(false);
     setNewPinName('');
     setNewPinType('lamp');
@@ -278,12 +302,12 @@ export default function MapPage() {
 
   const handleViewDetail = (id: string) => {
     setSelectedFacilityId(id);
-    navigate(`/facility/${id}`);
+    navigate(`/facilities/${id}`);
   };
 
   const handleGoInspect = (id: string) => {
     setSelectedFacilityId(id);
-    navigate(`/tasks`);
+    navigate('/');
   };
 
   const handleReportIssue = (facility: Facility) => {
@@ -508,6 +532,56 @@ export default function MapPage() {
           );
         })}
 
+        {navTarget && (() => {
+          const tPos = coordToPixel(navTarget.lat, navTarget.lng);
+          const navLine = currentPosition
+            ? `50%,50% ${tPos.x},${tPos.y}`
+            : `${tPos.x},${tPos.y}`;
+          return (
+            <>
+              {currentPosition && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 8 }}>
+                  <defs>
+                    <linearGradient id="navGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.9" />
+                      <stop offset="100%" stopColor="#e11d48" stopOpacity="0.9" />
+                    </linearGradient>
+                  </defs>
+                  <line
+                    x1="50%"
+                    y1="50%"
+                    x2={tPos.x}
+                    y2={tPos.y}
+                    stroke="url(#navGradient)"
+                    strokeWidth="4"
+                    strokeDasharray="10 6"
+                    strokeLinecap="round"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(59,130,246,0.4))' }}
+                  />
+                </svg>
+              )}
+              <div
+                className="absolute -translate-x-1/2 -translate-y-full z-25"
+                style={{ left: tPos.x, top: tPos.y, zIndex: 25 }}
+              >
+                <div className="relative flex flex-col items-center">
+                  <div className="absolute -bottom-8 w-16 h-16 rounded-full bg-danger-400/40 animate-breathe" />
+                  <div className="absolute -bottom-4 w-10 h-10 rounded-full bg-danger-400/60 animate-pulse" />
+                  <div className="relative">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-danger-500 to-danger-600 border-[3px] border-white shadow-2xl shadow-danger-500/40 flex items-center justify-center animate-float-up">
+                      <MapPin className="w-6 h-6 text-white" fill="white" />
+                    </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-t-[10px] border-t-danger-500" />
+                  </div>
+                  <div className="mt-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-danger-500 to-danger-600 text-white text-xs font-bold shadow-lg whitespace-nowrap">
+                    {navTarget.title.length > 10 ? navTarget.title.slice(0, 10) + '...' : navTarget.title}
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
         {currentPosition && (
           <div
             className="absolute -translate-x-1/2 -translate-y-1/2 z-20"
@@ -554,6 +628,60 @@ export default function MapPage() {
           </div>
         )}
       </div>
+
+      {navTarget && (
+        <div className="absolute left-4 right-4 z-40 animate-slide-down" style={{ top: '76px' }} onClick={(e) => e.stopPropagation()}>
+          <Card className="!shadow-2xl !border-primary-100 overflow-hidden">
+            <div className="p-0">
+              <div className="bg-gradient-to-r from-primary-600 via-primary-500 to-danger-500 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-white">
+                  <Navigation className="w-4 h-4" />
+                  <span className="text-sm font-bold">导航中</span>
+                </div>
+                <button
+                  onClick={clearNavTarget}
+                  className="px-3 py-1 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-medium transition-colors"
+                >
+                  结束导航
+                </button>
+              </div>
+              <div className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary-50 to-danger-50 border border-primary-100 flex items-center justify-center shrink-0">
+                    <MapPin className="w-5 h-5 text-danger-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-gray-900 truncate">{navTarget.title}</h4>
+                    {navTarget.address && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{navTarget.address}</p>}
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-lg font-bold text-primary-600 font-mono">
+                          {currentPosition ? formatDistance(Math.round(haversineDistance(currentPosition.lat, currentPosition.lng, navTarget.lat, navTarget.lng))) : '-'}
+                        </span>
+                      </div>
+                      <div className="w-px h-3.5 bg-gray-200" />
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <Clock className="w-3 h-3" />
+                        <span>预计 {currentPosition ? Math.max(1, Math.round(haversineDistance(currentPosition.lat, currentPosition.lng, navTarget.lat, navTarget.lng) / 80)) : 0} 分钟</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {navTarget.type === 'task' && navTarget.id && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
+                    <Button variant="outline" size="sm" leftIcon={<CheckCircle2 className="w-4 h-4" />} className="flex-1 !text-xs">
+                      任务签到
+                    </Button>
+                    <Button variant="primary" size="sm" leftIcon={<Eye className="w-4 h-4" />} className="flex-1 !text-xs" onClick={() => navigate('/')}>
+                      查看任务
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <div className="absolute top-0 left-0 right-0 z-30 p-4 pt-6">
         <div className="flex items-center gap-3">

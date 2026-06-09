@@ -61,6 +61,9 @@ export default function ReportPage() {
   const currentPosition = useAppStore((s) => s.currentPosition);
   const facilities = useAppStore((s) => s.facilities);
   const hazardReports = useAppStore((s) => s.hazardReports);
+  const pendingSyncQueue = useAppStore((s) => s.pendingSyncQueue);
+  const syncOfflineData = useAppStore((s) => s.syncOfflineData);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -1026,6 +1029,61 @@ export default function ReportPage() {
         showBack
         backTo="/"
       />
+
+      {pendingSyncQueue.length > 0 && (
+        <div className="mx-4 mb-3">
+          <Card className="!bg-gradient-to-r from-warning-50 via-amber-50 to-orange-50 !border-warning-200 overflow-hidden">
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-warning-100 flex items-center justify-center shrink-0">
+                  <CloudOff className="w-5 h-5 text-warning-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-gray-900">待同步记录</span>
+                    <StatusBadge label={`${pendingSyncQueue.length} 条`} variant="warning" size="sm" pulse={!online} />
+                    {!online && <span className="text-xs text-danger-600">● 当前离线</span>}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">
+                    恢复网络后点击立即同步，提交完成后自动从列表移除
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {pendingSyncQueue.slice(0, 3).map((r) => (
+                      <span key={r.id} className="text-[10px] px-2 py-0.5 rounded-full bg-white/70 text-gray-600 border border-gray-200/50 truncate max-w-[120px]">
+                        {r.title}
+                      </span>
+                    ))}
+                    {pendingSyncQueue.length > 3 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/70 text-gray-500 border border-gray-200/50">
+                        +{pendingSyncQueue.length - 3}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudOff className="w-4 h-4" />}
+                  disabled={!online || isSyncing}
+                  onClick={async () => {
+                    setIsSyncing(true);
+                    try {
+                      await syncOfflineData();
+                    } finally {
+                      setTimeout(() => setIsSyncing(false), 600);
+                    }
+                  }}
+                  className="flex-1 !text-xs"
+                >
+                  {!online ? '请先恢复网络' : isSyncing ? '同步中...' : pendingSyncQueue.length > 0 ? '立即同步' : '已全部同步'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {renderStepIndicator()}
 

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
 import { Card, StatusBadge, Tag, EmptyState, SearchBar } from '@/components/ui';
@@ -138,11 +139,13 @@ function TaskCard({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  const navigate = useNavigate();
   const priorityConfig = getPriorityConfig(task.priority);
   const statusConfig = getStatusConfig(task.status);
   const currentPosition = useAppStore((s) => s.currentPosition);
   const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
   const checkInTask = useAppStore((s) => s.checkInTask);
+  const setNavTarget = useAppStore((s) => s.setNavTarget);
 
   const priorityBarColors: Record<string, string> = {
     high: 'bg-gradient-to-b from-danger-500 to-danger-600',
@@ -158,7 +161,15 @@ function TaskCard({
 
   const handleStartNavigation = (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('开始导航:', task.id);
+    setNavTarget({
+      type: 'task',
+      id: task.id,
+      title: task.title,
+      lat: task.lat,
+      lng: task.lng,
+      address: task.address,
+    });
+    navigate('/map');
   };
 
   const handleCheckIn = (e: React.MouseEvent) => {

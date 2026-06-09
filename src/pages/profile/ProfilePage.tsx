@@ -507,7 +507,7 @@ export default function ProfilePage() {
         <MenuItem
           icon={<ClipboardList className="w-4.5 h-4.5" />}
           label="我的任务"
-          onClick={() => navigate('/tasks')}
+          onClick={() => navigate('/')}
         />
         <MenuItem
           icon={<Footprints className="w-4.5 h-4.5" />}
