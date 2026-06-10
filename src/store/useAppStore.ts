@@ -65,7 +65,7 @@ interface AppState {
   startTaskNavigation: (taskId: string) => void;
   checkInTask: (taskId: string, data: { lat: number; lng: number; photo?: string }) => void;
   addTaskTimelineStep: (taskId: string, step: Omit<TaskTimelineStep, 'id' | 'time'>) => void;
-  completeTask: (taskId: string) => void;
+  completeTask: (taskId: string, options?: { markNoHazard?: boolean }) => void;
   addFacilityInspection: (inspection: Omit<FacilityInspection, 'id' | 'inspectTime'>) => string;
   setTaskFilter: (filter: Partial<TaskFilter>) => void;
   setSelectedTaskId: (id: string | null) => void;
@@ -204,15 +204,25 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      completeTask: (taskId) =>
+      completeTask: (taskId, options) =>
         set((state) => {
           const now = new Date().toISOString();
+          const extraSteps: TaskTimelineStep[] = [];
+          if (options?.markNoHazard) {
+            extraSteps.push({
+              id: generateId('ts'),
+              type: 'hazard_report',
+              time: now,
+              result: 'success',
+              note: '本次巡检无隐患',
+            });
+          }
           const step: TaskTimelineStep = {
             id: generateId('ts'),
             type: 'task_complete',
             time: now,
             result: 'success',
-            note: '任务完成',
+            note: options?.markNoHazard ? '任务完成（无隐患）' : '任务完成',
           };
           return {
             tasks: state.tasks.map((t) =>
@@ -222,7 +232,7 @@ export const useAppStore = create<AppState>()(
             ),
             taskTimelines: {
               ...state.taskTimelines,
-              [taskId]: [...(state.taskTimelines[taskId] || []), step],
+              [taskId]: [...(state.taskTimelines[taskId] || []), ...extraSteps, step],
             },
           };
         }),

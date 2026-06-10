@@ -26,6 +26,7 @@ import {
   Settings,
   User,
   ClipboardList,
+  ClipboardCheck,
   Footprints,
   Building2,
   AlertTriangle,
@@ -183,6 +184,7 @@ export default function ProfilePage() {
   const messages = useAppStore((s) => s.messages);
   const hazardReports = useAppStore((s) => s.hazardReports);
   const pendingSyncQueue = useAppStore((s) => s.pendingSyncQueue);
+  const inspectionRecords = useAppStore((s) => s.inspectionRecords);
 
   const unreadCount = messages.filter((m) => !m.isRead).length;
   const pendingRectification = hazardReports.filter(
@@ -555,6 +557,14 @@ export default function ProfilePage() {
           onClick={() => navigate('/help')}
           iconColor="text-danger-600"
           iconBg="bg-danger-50"
+        />
+        <MenuItem
+          icon={<ClipboardCheck className="w-4.5 h-4.5" />}
+          label="巡检记录"
+          badge={inspectionRecords.length}
+          iconColor="text-success-600"
+          iconBg="bg-success-50"
+          onClick={() => navigate('/inspection-records')}
         />
         <MenuItem
           icon={<Database className="w-4.5 h-4.5" />}

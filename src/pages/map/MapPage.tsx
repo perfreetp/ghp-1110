@@ -104,6 +104,7 @@ export default function MapPage() {
   const endTrack = useAppStore((s) => s.endTrack);
   const addTrackPoint = useAppStore((s) => s.addTrackPoint);
   const setSelectedFacilityId = useAppStore((s) => s.setSelectedFacilityId);
+  const setSelectedTaskId = useAppStore((s) => s.setSelectedTaskId);
   const addFacility = useAppStore((s) => s.addFacility);
   const updateFacilitySiteInfo = useAppStore((s) => s.updateFacilitySiteInfo);
   const navTarget = useAppStore((s) => s.navTarget);
@@ -725,6 +726,11 @@ export default function MapPage() {
                         lat: currentPosition.lat,
                         lng: currentPosition.lng,
                       });
+                      setSelectedTaskId(navTarget.id!);
+                      setTimeout(() => {
+                        clearNavTarget();
+                        navigate('/');
+                      }, 300);
                     } finally {
                       setIsCheckingIn(false);
                     }

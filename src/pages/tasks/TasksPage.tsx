@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
@@ -37,6 +37,7 @@ import {
   FileWarning,
   Flag,
   Search,
+  ShieldCheck,
   X as CloseX,
   User,
   Check as CheckIcon,
@@ -162,12 +163,16 @@ function TaskCard({
   task,
   isExpanded,
   onToggle,
+  onReport,
   onInspect,
+  onRequestComplete,
 }: {
   task: Task;
   isExpanded: boolean;
   onToggle: () => void;
+  onReport?: () => void;
   onInspect?: () => void;
+  onRequestComplete?: () => void;
 }) {
   const navigate = useNavigate();
   const priorityConfig = getPriorityConfig(task.priority);
@@ -258,6 +263,10 @@ function TaskCard({
 
   const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (onRequestComplete) {
+      onRequestComplete();
+      return;
+    }
     completeTask(task.id);
 };
 
@@ -658,12 +667,19 @@ function TaskCard({
 }
 
 export default function TasksPage() {
+  const navigate = useNavigate();
   const tasks = useAppStore((s) => s.tasks);
   const facilities = useAppStore((s) => s.facilities);
   const user = useAppStore((s) => s.user);
   const addFacilityInspection = useAppStore((s) => s.addFacilityInspection);
+  const selectedTaskId = useAppStore((s) => s.selectedTaskId);
+  const setSelectedTaskId = useAppStore((s) => s.setSelectedTaskId);
+  const completeTask = useAppStore((s) => s.completeTask);
+  const startTaskNavigation = useAppStore((s) => s.startTaskNavigation);
+  const setNavTarget = useAppStore((s) => s.setNavTarget);
+  const taskTimelines = useAppStore((s) => s.taskTimelines);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(selectedTaskId);
   const [searchText, setSearchText] = useState('');
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
   const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
@@ -671,6 +687,18 @@ export default function TasksPage() {
   const [inspectStatus, setInspectStatus] = useState<FacilityStatus>('normal');
   const [inspectNote, setInspectNote] = useState('');
   const [submittingInspect, setSubmittingInspect] = useState(false);
+  const [completeWarningOpen, setCompleteWarningOpen] = useState(false);
+  const [completeWarningTaskId, setCompleteWarningTaskId] = useState<string | null>(null);
+  const [completeWarningMissing, setCompleteWarningMissing] = useState<{ checkIn: boolean; inspect: boolean }>({ checkIn: false, inspect: false });
+  const [noHazardOpen, setNoHazardOpen] = useState(false);
+  const [noHazardTaskId, setNoHazardTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      setExpandedId(selectedTaskId);
+      setSelectedTaskId(null);
+    }
+  }, [selectedTaskId, setSelectedTaskId]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
@@ -680,6 +708,79 @@ export default function TasksPage() {
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
     return { total, pending, inProgress, completed, completionRate };
   }, [tasks]);
+
+  const handleRequestComplete = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const timeline = taskTimelines[taskId] || [];
+    const hasCheckIn = timeline.some((s) => s.type === 'check_in');
+    const hasInspection = timeline.some((s) => s.type === 'facility_inspect');
+    const hasReport = timeline.some((s) => s.type === 'hazard_report');
+
+    if (!hasCheckIn || !hasInspection) {
+      setCompleteWarningMissing({ checkIn: !hasCheckIn, inspect: !hasInspection });
+      setCompleteWarningTaskId(taskId);
+      setCompleteWarningOpen(true);
+      setExpandedId(taskId);
+      return;
+    }
+
+    if (!hasReport) {
+      setNoHazardTaskId(taskId);
+      setNoHazardOpen(true);
+      return;
+    }
+
+    completeTask(taskId);
+  };
+
+  const handleGoCheckIn = () => {
+    const tid = completeWarningTaskId;
+    if (!tid) return;
+    const task = tasks.find((t) => t.id === tid);
+    setCompleteWarningOpen(false);
+    if (task) {
+      startTaskNavigation(tid);
+      setNavTarget({
+        type: 'task',
+        id: tid,
+        title: task.title,
+        lat: task.lat,
+        lng: task.lng,
+        address: task.address,
+      });
+      navigate('/map');
+    }
+  };
+
+  const handleGoInspect = () => {
+    const tid = completeWarningTaskId;
+    if (!tid) return;
+    setCompleteWarningOpen(false);
+    handleOpenInspect(tid);
+  };
+
+  const handleOpenInspect = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    setInspectTaskId(taskId);
+    setInspectModalOpen(true);
+    setSelectedInspectFacilityId(task?.facilityIds[0] || null);
+    setInspectStatus('normal');
+    setInspectNote('');
+    setExpandedId(taskId);
+  };
+
+  const handleConfirmNoHazard = () => {
+    const tid = noHazardTaskId;
+    setNoHazardOpen(false);
+    if (tid) completeTask(tid, { markNoHazard: true });
+  };
+
+  const handleGoReportNoHazard = () => {
+    const tid = noHazardTaskId;
+    setNoHazardOpen(false);
+    if (tid) navigate('/report', { state: { taskId: tid } });
+  };
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
@@ -835,13 +936,8 @@ export default function TasksPage() {
                 onToggle={() =>
                   setExpandedId(expandedId === task.id ? null : task.id)
                 }
-                onInspect={() => {
-                  setInspectTaskId(task.id);
-                  setSelectedInspectFacilityId(task.facilityIds?.[0] || null);
-                  setInspectStatus('normal');
-                  setInspectNote('');
-                  setInspectModalOpen(true);
-                }}
+                onInspect={() => handleOpenInspect(task.id)}
+                onRequestComplete={() => handleRequestComplete(task.id)}
               />
             ))}
           </div>
@@ -1036,6 +1132,179 @@ export default function TasksPage() {
             </div>
           );
         })()}
+      </Modal>
+
+      <Modal
+        isOpen={completeWarningOpen}
+        onClose={() => setCompleteWarningOpen(false)}
+        title="任务未完成校验"
+      >
+        <div className="p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-11 h-11 rounded-2xl bg-warning-50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5.5 h-5.5 text-warning-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-gray-800">还有必填步骤未完成</div>
+              <div className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                为了保证任务闭环，请先完成以下步骤后再提交完成
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2.5 mb-5">
+            <div
+              className={cn(
+                'flex items-center gap-3 p-3 rounded-xl border transition-all',
+                completeWarningMissing.checkIn
+                  ? 'bg-danger-50 border-danger-100'
+                  : 'bg-success-50 border-success-100',
+              )}
+            >
+              <div
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                  completeWarningMissing.checkIn ? 'bg-white' : 'bg-success-100',
+                )}
+              >
+                {completeWarningMissing.checkIn ? (
+                  <Flag className={cn('w-4 h-4 text-danger-600')} />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-success-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-gray-800">任务签到</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  {completeWarningMissing.checkIn ? '需要先到任务地点完成签到' : '已完成签到'}
+                </div>
+              </div>
+              {completeWarningMissing.checkIn && (
+                <Tag color="pink" label="待完成" />
+              )}
+              {!completeWarningMissing.checkIn && (
+                <Tag color="green" label="已完成" />
+              )}
+            </div>
+
+            <div
+              className={cn(
+                'flex items-center gap-3 p-3 rounded-xl border transition-all',
+                completeWarningMissing.inspect
+                  ? 'bg-danger-50 border-danger-100'
+                  : 'bg-success-50 border-success-100',
+              )}
+            >
+              <div
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                  completeWarningMissing.inspect ? 'bg-white' : 'bg-success-100',
+                )}
+              >
+                {completeWarningMissing.inspect ? (
+                  <ClipboardCheck className={cn('w-4 h-4 text-danger-600')} />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-success-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-gray-800">设施巡检</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  {completeWarningMissing.inspect ? '需要至少完成1次设施巡检' : '已完成设施巡检'}
+                </div>
+              </div>
+              {completeWarningMissing.inspect && (
+                <Tag color="pink" label="待完成" />
+              )}
+              {!completeWarningMissing.inspect && (
+                <Tag color="green" label="已完成" />
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2.5">
+            <Button
+              variant="outline"
+              size="full"
+              onClick={() => setCompleteWarningOpen(false)}
+              className="!text-xs"
+            >
+              稍后再做
+            </Button>
+            {completeWarningMissing.checkIn && (
+              <Button
+                variant="primary"
+                size="full"
+                leftIcon={<Navigation className="w-4 h-4" />}
+                onClick={handleGoCheckIn}
+                className="!text-xs"
+              >
+                去签到
+              </Button>
+            )}
+            {!completeWarningMissing.checkIn && completeWarningMissing.inspect && (
+              <Button
+                variant="primary"
+                size="full"
+                leftIcon={<ClipboardCheck className="w-4 h-4" />}
+                onClick={handleGoInspect}
+                className="!text-xs"
+              >
+                去巡检
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={noHazardOpen}
+        onClose={() => setNoHazardOpen(false)}
+        title="完成任务确认"
+      >
+        <div className="p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-11 h-11 rounded-2xl bg-primary-50 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5.5 h-5.5 text-primary-600" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-gray-800">巡检后未发现隐患</div>
+              <div className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                检测到您已完成签到和设施巡检，但还没有提交过隐患上报，您可以选择以下任一方式完成任务闭环
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 mb-5">
+            <button
+              onClick={handleGoReportNoHazard}
+              className="p-3.5 rounded-xl border border-warning-100 bg-warning-50 hover:bg-warning-100 hover:border-warning-200 transition-all text-left"
+            >
+              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-2.5">
+                <FileWarning className="w-4 h-4 text-warning-600" />
+              </div>
+              <div className="text-xs font-semibold text-gray-800 mb-1">去上报隐患</div>
+              <div className="text-[10px] text-gray-500 leading-relaxed">有需要上报的问题，进入隐患上报</div>
+            </button>
+            <button
+              onClick={handleConfirmNoHazard}
+              className="p-3.5 rounded-xl border border-success-100 bg-success-50 hover:bg-success-100 hover:border-success-200 transition-all text-left"
+            >
+              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-2.5">
+                <ShieldCheck className="w-4 h-4 text-success-600" />
+              </div>
+              <div className="text-xs font-semibold text-gray-800 mb-1">本次无隐患</div>
+              <div className="text-[10px] text-gray-500 leading-relaxed">确认无隐患，直接完成任务</div>
+            </button>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-3 flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
+            <div className="text-[10px] text-gray-500 leading-relaxed">
+              选择「本次无隐患」后会自动在任务时间线中留下记录，并将任务标记为完成状态
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

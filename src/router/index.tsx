@@ -10,6 +10,7 @@ import RectificationPage from '@/pages/rectification/RectificationPage';
 import MessagesPage from '@/pages/messages/MessagesPage';
 import ProfilePage from '@/pages/profile/ProfilePage';
 import OfflineSyncPage from '@/pages/profile/OfflineSyncPage';
+import InspectionRecordsPage from '@/pages/profile/InspectionRecordsPage';
 import ScanPage from '@/pages/common/ScanPage';
 import HelpPage from '@/pages/common/HelpPage';
 import { useMemo } from 'react';
@@ -172,6 +173,19 @@ function AnimatedRoutes() {
                 transition={{ duration: 0.25 }}
               >
                 <OfflineSyncPage />
+              </motion.div>
+            }
+          />
+          <Route
+            path="/inspection-records"
+            element={
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.25 }}
+              >
+                <InspectionRecordsPage />
               </motion.div>
             }
           />

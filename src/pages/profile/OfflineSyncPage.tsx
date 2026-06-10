@@ -202,6 +202,7 @@ export default function OfflineSyncPage() {
     setBatchSyncing(true);
     try {
       await syncOfflineData();
+      setActiveTab('pending');
     } finally {
       setTimeout(() => setBatchSyncing(false), 500);
     }
