@@ -8,9 +8,35 @@ export interface User {
   employeeNo: string;
 }
 
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'expired';
+export type TaskStatus = 'pending' | 'navigating' | 'arrived' | 'inspecting' | 'in_progress' | 'completed' | 'expired';
 export type TaskType = 'routine' | 'special' | 'emergency';
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type TimelineStepType = 'navigation_start' | 'check_in' | 'facility_inspect' | 'hazard_report' | 'task_complete';
+
+export interface TaskTimelineStep {
+  id: string;
+  type: TimelineStepType;
+  time: string;
+  result?: 'success' | 'warning' | 'failed';
+  relatedId?: string;
+  relatedName?: string;
+  note?: string;
+  lat?: number;
+  lng?: number;
+}
+
+export interface FacilityInspection {
+  id: string;
+  facilityId: string;
+  taskId?: string;
+  inspector: string;
+  inspectTime: string;
+  status: FacilityStatus;
+  note?: string;
+  photos?: MediaFile[];
+  lat?: number;
+  lng?: number;
+}
 
 export interface Task {
   id: string;
@@ -29,6 +55,11 @@ export interface Task {
   description?: string;
   checkInTime?: string;
   completeTime?: string;
+  navigationStartTime?: string;
+  arriveTime?: string;
+  inspectionIds?: string[];
+  relatedHazardIds?: string[];
+  timeline?: TaskTimelineStep[];
 }
 
 export interface CheckIn {
@@ -62,6 +93,11 @@ export interface Facility {
   inspectionCount: number;
   lastInspector?: string;
   lastInspectTime?: string;
+  sitePhotos?: MediaFile[];
+  siteNote?: string;
+  siteStatus?: FacilityStatus;
+  siteCollectTime?: string;
+  siteCollector?: string;
 }
 
 export interface TwinFacilityData {
@@ -77,6 +113,7 @@ export interface TwinFacilityData {
 
 export type HazardLevel = 'critical' | 'normal' | 'minor';
 export type HazardStatus = 'submitted' | 'dispatching' | 'rectifying' | 'rechecking' | 'closed';
+export type SyncStatus = 'pending' | 'synced' | 'failed';
 
 export interface HazardReport {
   id: string;
@@ -97,6 +134,9 @@ export interface HazardReport {
   savedOffline: boolean;
   taskId?: string;
   handlerName?: string;
+  syncStatus?: SyncStatus;
+  syncError?: string;
+  syncTime?: string;
 }
 
 export type MediaType = 'image' | 'video' | 'audio';

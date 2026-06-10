@@ -17,6 +17,11 @@ import {
   FileClock,
   Wrench,
   Calendar,
+  ImagePlus,
+  FileText,
+  Activity,
+  User as SiteUser,
+  Clock as SiteClock,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
@@ -388,6 +393,82 @@ export default function FacilityDetailPage() {
             </Button>
           </div>
         </Card>
+
+        {(facility.sitePhotos?.length || facility.siteNote || facility.siteCollectTime) && (
+          <Card className="p-4">
+            <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-success-600" />
+              现场采集信息
+              {facility.siteStatus && (
+                <StatusBadge
+                  label={getFacilityStatusConfig(facility.siteStatus).label}
+                  variant={getStatusBadgeVariant(facility.siteStatus)}
+                  size="sm"
+                  className="ml-auto"
+                />
+              )}
+            </h3>
+
+            <div className="space-y-4">
+              {facility.sitePhotos?.length ? (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <ImagePlus className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-medium text-gray-600">
+                      现场照片 <span className="text-gray-400">({facility.sitePhotos.length})</span>
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {facility.sitePhotos.map((p) => (
+                      <div key={p.id} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+                        <img src={p.url} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {facility.siteNote && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <FileText className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-medium text-gray-600">现场备注</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {facility.siteNote}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(facility.siteCollectTime || facility.siteCollector) && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-50">
+                  {facility.siteCollectTime && (
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-gray-50/50">
+                      <SiteClock className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] text-gray-400">采集时间</p>
+                        <p className="text-xs font-medium text-gray-700">
+                          {formatDateTime(facility.siteCollectTime)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {facility.siteCollector && (
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-gray-50/50">
+                      <SiteUser className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] text-gray-400">采集人</p>
+                        <p className="text-xs font-medium text-gray-700">{facility.siteCollector}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-4">
           <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">

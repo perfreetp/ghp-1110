@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Video,
   Mic,
@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Trash2,
   Eye,
+  ClipboardCheck,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
@@ -56,20 +57,28 @@ const levelOptions: { value: HazardLevel; label: string; color: string; activeCl
 
 export default function ReportPage() {
   const navigate = useNavigate();
+  const location = useLocation() as { state?: { taskId?: string; facilityId?: string } };
   const addHazardReport = useAppStore((s) => s.addHazardReport);
   const online = useAppStore((s) => s.online);
   const currentPosition = useAppStore((s) => s.currentPosition);
   const facilities = useAppStore((s) => s.facilities);
   const hazardReports = useAppStore((s) => s.hazardReports);
+  const tasks = useAppStore((s) => s.tasks);
   const pendingSyncQueue = useAppStore((s) => s.pendingSyncQueue);
   const syncOfflineData = useAppStore((s) => s.syncOfflineData);
+  const initialTaskId = location.state?.taskId;
+  const initialFacilityId = location.state?.facilityId;
+  const initialTask = initialTaskId ? tasks.find((t) => t.id === initialTaskId) : null;
   const [isSyncing, setIsSyncing] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(initialTaskId);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedLevel, setSelectedLevel] = useState<HazardLevel>('normal');
   const [title, setTitle] = useState('');
-  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(
+    initialFacilityId ? facilities.find((f) => f.id === initialFacilityId) || null : null
+  );
   const [facilitySearchOpen, setFacilitySearchOpen] = useState(false);
   const [facilitySearchKeyword, setFacilitySearchKeyword] = useState('');
 
@@ -262,6 +271,7 @@ export default function ReportPage() {
       lng,
       address,
       facilityId: selectedFacility?.id,
+      taskId,
       mediaFiles,
       savedOffline: !online,
     });
@@ -271,6 +281,12 @@ export default function ReportPage() {
   };
 
   const handleGoHome = () => {
+    setShowSuccessModal(false);
+    if (taskId) navigate('/');
+    else navigate('/');
+  };
+
+  const handleGoBackToTask = () => {
     setShowSuccessModal(false);
     navigate('/');
   };
@@ -1085,6 +1101,33 @@ export default function ReportPage() {
         </div>
       )}
 
+      {taskId && initialTask && (
+        <div className="mx-4 mb-3">
+          <Card className="!bg-gradient-to-r from-primary-50 to-indigo-50 !border-primary-200 overflow-hidden">
+            <div className="p-3.5">
+              <div className="flex items-start gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
+                  <ClipboardCheck className="w-4 h-4 text-primary-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-primary-700">关联任务</span>
+                    <button
+                      onClick={() => setTaskId(undefined)}
+                      className="ml-auto text-[10px] text-gray-400 hover:text-gray-600 underline"
+                    >
+                      取消关联
+                    </button>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-800 truncate mt-0.5">{initialTask.title}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">#{initialTask.id.slice(-6)}</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {renderStepIndicator()}
 
       <div className="flex-1 px-4 py-4 pb-32 overflow-y-auto">
@@ -1259,12 +1302,25 @@ export default function ReportPage() {
           />
 
           <div className="mt-8 grid grid-cols-2 gap-3">
-            <Button variant="outline" size="lg" onClick={handleGoHome}>
-              返回首页
-            </Button>
-            <Button variant="twin" size="lg" onClick={handleContinue}>
-              继续上报
-            </Button>
+            {taskId ? (
+              <>
+                <Button variant="outline" size="lg" onClick={handleGoBackToTask}>
+                  返回任务
+                </Button>
+                <Button variant="twin" size="lg" onClick={handleContinue}>
+                  继续上报
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="lg" onClick={handleGoHome}>
+                  返回首页
+                </Button>
+                <Button variant="twin" size="lg" onClick={handleContinue}>
+                  继续上报
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Modal>

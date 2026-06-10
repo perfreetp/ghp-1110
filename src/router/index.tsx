@@ -9,6 +9,7 @@ import ReportPage from '@/pages/report/ReportPage';
 import RectificationPage from '@/pages/rectification/RectificationPage';
 import MessagesPage from '@/pages/messages/MessagesPage';
 import ProfilePage from '@/pages/profile/ProfilePage';
+import OfflineSyncPage from '@/pages/profile/OfflineSyncPage';
 import ScanPage from '@/pages/common/ScanPage';
 import HelpPage from '@/pages/common/HelpPage';
 import { useMemo } from 'react';
@@ -158,6 +159,19 @@ function AnimatedRoutes() {
                 className="pb-24"
               >
                 <HelpPage />
+              </motion.div>
+            }
+          />
+          <Route
+            path="/offline-sync"
+            element={
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.25 }}
+              >
+                <OfflineSyncPage />
               </motion.div>
             }
           />

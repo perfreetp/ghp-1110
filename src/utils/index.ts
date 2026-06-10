@@ -93,11 +93,54 @@ export function getPriorityConfig(priority: TaskPriority) {
 export function getStatusConfig(status: TaskStatus) {
   const configs: Record<TaskStatus, { label: string; color: string; bg: string }> = {
     pending: { label: '待执行', color: 'text-primary-600', bg: 'bg-primary-50' },
+    navigating: { label: '导航中', color: 'text-twin-cyan-600', bg: 'bg-twin-cyan/10' },
+    arrived: { label: '已到达', color: 'text-violet-600', bg: 'bg-violet-50' },
+    inspecting: { label: '巡检中', color: 'text-indigo-600', bg: 'bg-indigo-50' },
     in_progress: { label: '进行中', color: 'text-success-600', bg: 'bg-success-50' },
     completed: { label: '已完成', color: 'text-gray-600', bg: 'bg-gray-100' },
     expired: { label: '已超期', color: 'text-danger-600', bg: 'bg-danger-50' },
   };
   return configs[status];
+}
+
+export function getTimelineStepLabel(type: string): string {
+  const labels: Record<string, string> = {
+    navigation_start: '开始导航',
+    check_in: '现场签到',
+    facility_inspect: '设施巡检',
+    hazard_report: '隐患上报',
+    task_complete: '任务完成',
+  };
+  return labels[type] || type;
+}
+
+export function getTimelineStepIcon(type: string): string {
+  const icons: Record<string, string> = {
+    navigation_start: 'navigation',
+    check_in: 'map-pin-check',
+    facility_inspect: 'clipboard-check',
+    hazard_report: 'alert-triangle',
+    task_complete: 'check-circle-2',
+  };
+  return icons[type] || 'circle';
+}
+
+export function getSyncStatusLabel(status?: string): string {
+  const labels: Record<string, string> = {
+    pending: '待同步',
+    synced: '已同步',
+    failed: '同步失败',
+  };
+  return labels[status || ''] || '未知';
+}
+
+export function getSyncStatusVariant(status?: string): 'success' | 'warning' | 'danger' | 'default' {
+  switch (status) {
+    case 'synced': return 'success';
+    case 'pending': return 'warning';
+    case 'failed': return 'danger';
+    default: return 'default';
+  }
 }
 
 export function getFacilityStatusConfig(status: FacilityStatus) {

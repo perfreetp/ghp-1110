@@ -562,6 +562,7 @@ export default function ProfilePage() {
           badge={pendingSyncQueue.length}
           iconColor="text-blue-600"
           iconBg="bg-blue-50"
+          onClick={() => navigate('/offline-sync')}
         />
         <MenuItem
           icon={<HelpCircle className="w-4.5 h-4.5" />}

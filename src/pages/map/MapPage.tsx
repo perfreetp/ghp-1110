@@ -22,6 +22,10 @@ import {
   Edit3,
   Filter,
   CheckCircle2,
+  ImagePlus,
+  FileText,
+  Activity,
+  X as IconX,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Card, StatusBadge, Tag, EmptyState, Modal, InfoRow, Divider } from '@/components/ui';
@@ -100,6 +104,7 @@ export default function MapPage() {
   const addTrackPoint = useAppStore((s) => s.addTrackPoint);
   const setSelectedFacilityId = useAppStore((s) => s.setSelectedFacilityId);
   const addFacility = useAppStore((s) => s.addFacility);
+  const updateFacilitySiteInfo = useAppStore((s) => s.updateFacilitySiteInfo);
   const navTarget = useAppStore((s) => s.navTarget);
   const clearNavTarget = useAppStore((s) => s.clearNavTarget);
 
@@ -118,6 +123,11 @@ export default function MapPage() {
   const [newPinName, setNewPinName] = useState('');
   const [longPressPos, setLongPressPos] = useState<{ lat: number; lng: number } | null>(null);
   const [direction, setDirection] = useState(45);
+  const [showSiteInfoModal, setShowSiteInfoModal] = useState(false);
+  const [newlyCreatedFacilityId, setNewlyCreatedFacilityId] = useState<string | null>(null);
+  const [sitePhotos, setSitePhotos] = useState<{ id: string; url: string }[]>([]);
+  const [siteNote, setSiteNote] = useState('');
+  const [siteStatus, setSiteStatus] = useState<Facility['status']>('normal');
 
   const mapRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -289,11 +299,37 @@ export default function MapPage() {
       setSelectedFacilityId(newId);
       const newFacility = useAppStore.getState().facilities.find((f) => f.id === newId);
       if (newFacility) setSelectedFacility(newFacility);
+      setNewlyCreatedFacilityId(newId);
+      setSitePhotos([]);
+      setSiteNote('');
+      setSiteStatus('normal');
+      setShowSiteInfoModal(true);
     }
     setShowAddPinModal(false);
     setNewPinName('');
     setNewPinType('lamp');
     setLongPressPos(null);
+  };
+
+  const handleSaveSiteInfo = () => {
+    if (!newlyCreatedFacilityId) return;
+    const photos = sitePhotos.map((p) => ({
+      id: p.id,
+      type: 'image' as const,
+      url: p.url,
+      uploadTime: new Date().toISOString(),
+    }));
+    updateFacilitySiteInfo(newlyCreatedFacilityId, {
+      sitePhotos: photos,
+      siteNote: siteNote.trim() || undefined,
+      siteStatus,
+      siteCollector: useAppStore.getState().user?.name,
+    });
+    setShowSiteInfoModal(false);
+    setNewlyCreatedFacilityId(null);
+    setSitePhotos([]);
+    setSiteNote('');
+    setSiteStatus('normal');
   };
 
   const handleLocate = () => {
@@ -1051,6 +1087,161 @@ export default function MapPage() {
               disabled={!newPinName.trim()}
             >
               确认添加
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showSiteInfoModal}
+        onClose={() => {
+          setShowSiteInfoModal(false);
+          setNewlyCreatedFacilityId(null);
+          setSitePhotos([]);
+          setSiteNote('');
+          setSiteStatus('normal');
+        }}
+        title="补充现场采集信息"
+        className="!max-w-md"
+      >
+        <div className="space-y-5">
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
+              <FacilityIcon
+                type={
+                  (useAppStore
+                    .getState()
+                    .facilities.find((f) => f.id === newlyCreatedFacilityId)?.type as FacilityType) || 'lamp'
+                }
+                size="sm"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {useAppStore
+                  .getState()
+                  .facilities.find((f) => f.id === newlyCreatedFacilityId)?.name || '新建设施'}
+              </p>
+              <p className="text-[10px] text-gray-500">
+                #{newlyCreatedFacilityId?.slice(-8)} · {new Date().toLocaleDateString('zh-CN')}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <ImagePlus className="w-4 h-4 text-primary-500" />
+              现场照片
+              <span className="text-[10px] text-gray-400 font-normal ml-1">（可选，最多9张）</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {sitePhotos.map((p) => (
+                <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
+                  <img src={p.url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => setSitePhotos((prev) => prev.filter((x) => x.id !== p.id))}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <IconX className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              {sitePhotos.length < 9 && (
+                <button
+                  onClick={() =>
+                    setSitePhotos((prev) => [
+                      ...prev,
+                      {
+                        id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        url: `https://picsum.photos/400/400?random=${Date.now()}${prev.length}`,
+                      },
+                    ])
+                  }
+                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-500 transition-colors"
+                >
+                  <ImagePlus className="w-6 h-6" />
+                  <span className="text-[10px]">添加照片</span>
+                </button>
+              )}
+            </div>
+            {sitePhotos.length > 0 && (
+              <p className="text-[10px] text-gray-400 mt-1.5">已添加 {sitePhotos.length} 张照片</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-primary-500" />
+              现场备注
+              <span className="text-[10px] text-gray-400 font-normal ml-1">（可选）</span>
+            </label>
+            <textarea
+              value={siteNote}
+              onChange={(e) => setSiteNote(e.target.value)}
+              rows={3}
+              maxLength={200}
+              placeholder="请输入现场观察情况、特殊说明等备注信息..."
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 focus:border-primary-300 focus:bg-white focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm resize-none placeholder:text-gray-400"
+            />
+            <div className="flex justify-between mt-1">
+              <span className="text-[10px] text-gray-400">支持换行</span>
+              <span className={`text-[10px] ${siteNote.length > 180 ? 'text-danger-500' : 'text-gray-400'}`}>
+                {siteNote.length}/200
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-primary-500" />
+              现场状态
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {(
+                [
+                  { value: 'normal', label: '正常', activeClass: 'border-success-400 bg-success-50 text-success-600 ring-2 ring-success-100' },
+                  { value: 'warning', label: '异常', activeClass: 'border-warning-400 bg-warning-50 text-warning-600 ring-2 ring-warning-100' },
+                  { value: 'damaged', label: '损坏', activeClass: 'border-danger-400 bg-danger-50 text-danger-600 ring-2 ring-danger-100' },
+                  { value: 'offline', label: '停用', activeClass: 'border-gray-400 bg-gray-50 text-gray-600 ring-2 ring-gray-100' },
+                ] as { value: Facility['status']; label: string; activeClass: string }[]
+              ).map((s) => {
+                const isActive = siteStatus === s.value;
+                return (
+                  <button
+                    key={s.value}
+                    onClick={() => setSiteStatus(s.value)}
+                    className={cn(
+                      'py-2.5 rounded-xl border text-xs font-medium transition-all',
+                      isActive
+                        ? s.activeClass
+                        : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Divider />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              size="full"
+              onClick={() => {
+                setShowSiteInfoModal(false);
+                setNewlyCreatedFacilityId(null);
+                setSitePhotos([]);
+                setSiteNote('');
+                setSiteStatus('normal');
+              }}
+            >
+              跳过
+            </Button>
+            <Button variant="primary" size="full" onClick={handleSaveSiteInfo}>
+              保存现场信息
             </Button>
           </div>
         </div>

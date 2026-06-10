@@ -2,15 +2,19 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
-import { Card, StatusBadge, Tag, EmptyState, SearchBar } from '@/components/ui';
+import { Card, StatusBadge, Tag, EmptyState, SearchBar, Divider, InfoRow } from '@/components/ui';
 import { useAppStore } from '@/store/useAppStore';
 import {
   formatTime,
   formatDistance,
+  formatDateTime,
+  relativeTime,
   getPriorityConfig,
   getStatusConfig,
   getTaskTypeName,
+  getTimelineStepLabel,
   cn,
+  haversineDistance,
 } from '@/utils';
 import {
   Navigation,
@@ -20,11 +24,18 @@ import {
   CheckCircle2,
   Play,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   AlertCircle,
   Footprints,
+  AlertTriangle,
+  Edit3,
+  Circle,
+  XCircle,
+  ClipboardCheck,
+  FileWarning,
+  Flag,
 } from 'lucide-react';
-import type { Task, TaskStatus } from '@/types';
+import type { Task, TaskStatus, TaskTimelineStep } from '@/types';
 
 type FilterKey = 'all' | TaskStatus;
 
@@ -130,6 +141,17 @@ function StatCard({
   );
 }
 
+function getStepIcon(type: TaskTimelineStep['type']) {
+  switch (type) {
+    case 'navigation_start': return <Navigation className="w-3.5 h-3.5" />;
+    case 'check_in': return <Flag className="w-3.5 h-3.5" />;
+    case 'facility_inspect': return <ClipboardCheck className="w-3.5 h-3.5" />;
+    case 'hazard_report': return <FileWarning className="w-3.5 h-3.5" />;
+    case 'task_complete': return <CheckCircle2 className="w-3.5 h-3.5" />;
+    default: return <Circle className="w-3.5 h-3.5" />;
+  }
+}
+
 function TaskCard({
   task,
   isExpanded,
@@ -143,9 +165,30 @@ function TaskCard({
   const priorityConfig = getPriorityConfig(task.priority);
   const statusConfig = getStatusConfig(task.status);
   const currentPosition = useAppStore((s) => s.currentPosition);
-  const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
   const checkInTask = useAppStore((s) => s.checkInTask);
   const setNavTarget = useAppStore((s) => s.setNavTarget);
+  const startTaskNavigation = useAppStore((s) => s.startTaskNavigation);
+  const completeTask = useAppStore((s) => s.completeTask);
+  const taskTimelines = useAppStore((s) => s.taskTimelines);
+  const facilities = useAppStore((s) => s.facilities);
+  const hazardReports = useAppStore((s) => s.hazardReports);
+
+  const timeline = useMemo(() => taskTimelines[task.id] || [], [taskTimelines, task.id]);
+  const relatedFacilities = useMemo(
+    () => facilities.filter((f) => task.facilityIds.includes(f.id) || timeline.filter((s) => s.type === 'facility_inspect').some((s) => s.relatedId === f.id)),
+    [facilities, task.facilityIds, timeline]
+  );
+  const relatedHazards = useMemo(
+    () => hazardReports.filter((h) => h.taskId === task.id || (task.relatedHazardIds || []).includes(h.id)),
+    [hazardReports, task.id, task.relatedHazardIds]
+  );
+  const distanceToTask = useMemo(() => {
+    if (!currentPosition) return null;
+    return Math.round(haversineDistance(currentPosition.lat, currentPosition.lng, task.lat, task.lng));
+  }, [currentPosition, task.lat, task.lng]);
+  const isNearby = distanceToTask !== null && distanceToTask < 100;
+  const isCompleted = task.status === 'completed';
+  const canCheckIn = !isCompleted;
 
   const priorityBarColors: Record<string, string> = {
     high: 'bg-gradient-to-b from-danger-500 to-danger-600',
@@ -161,6 +204,7 @@ function TaskCard({
 
   const handleStartNavigation = (e: React.MouseEvent) => {
     e.stopPropagation();
+    startTaskNavigation(task.id);
     setNavTarget({
       type: 'task',
       id: task.id,
@@ -182,17 +226,33 @@ function TaskCard({
     }
   };
 
-  const handleViewDetail = (e: React.MouseEvent) => {
+  const handleGoInspect = (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('查看详情:', task.id);
+    setNavTarget({
+      type: 'task',
+      id: task.id,
+      title: task.title,
+      lat: task.lat,
+      lng: task.lng,
+      address: task.address,
+    });
+    navigate('/map');
+  };
+
+  const handleReportHazard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate('/report', { state: { taskId: task.id } });
   };
 
   const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    updateTaskStatus(task.id, 'completed', {
-      completeTime: new Date().toISOString(),
-    });
-  };
+    completeTask(task.id);
+};
+
+  const stepCount = timeline.length;
+  const hasInspection = timeline.some((s) => s.type === 'facility_inspect');
+  const hasReport = timeline.some((s) => s.type === 'hazard_report');
+  const canComplete = !isCompleted && (timeline.length > 0 || task.status === 'in_progress' || task.status === 'inspecting' || task.status === 'arrived');
 
   return (
     <Card
@@ -227,19 +287,31 @@ function TaskCard({
                   {priorityConfig.label}
                 </span>
               </div>
-              <StatusBadge
-                label={statusConfig.label}
-                variant={
-                  task.status === 'in_progress'
-                    ? 'success'
-                    : task.status === 'completed'
-                    ? 'default'
-                    : task.status === 'expired'
-                    ? 'danger'
-                    : 'info'
-                }
-                pulse={task.status === 'in_progress'}
-              />
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isNearby && !isCompleted && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-md bg-success-50 text-success-600 border border-success-100">
+                    <span className="w-1 h-1 rounded-full bg-success-500 animate-pulse" />
+                    已到达
+                  </span>
+                )}
+                <StatusBadge
+                  label={statusConfig.label}
+                  variant={
+                    task.status === 'completed'
+                      ? 'default'
+                      : task.status === 'expired'
+                      ? 'danger'
+                      : task.status === 'navigating'
+                      ? 'warning'
+                      : task.status === 'arrived'
+                      ? 'info'
+                      : task.status === 'inspecting'
+                      ? 'twin'
+                      : 'success'
+                  }
+                  pulse={task.status === 'in_progress' || task.status === 'inspecting' || task.status === 'navigating'}
+                />
+              </div>
             </div>
 
             <h3 className="text-base font-semibold text-gray-900 mb-2 leading-snug line-clamp-2">
@@ -250,9 +322,9 @@ function TaskCard({
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                 <span className="truncate">{task.location}</span>
-                {task.distance !== undefined && (
+                {distanceToTask !== undefined && distanceToTask !== null && (
                   <span className="shrink-0 ml-auto text-primary-600 font-medium">
-                    {formatDistance(task.distance)}
+                    {formatDistance(distanceToTask)}
                   </span>
                 )}
               </div>
@@ -263,8 +335,35 @@ function TaskCard({
               </div>
             </div>
 
+            {!isExpanded && timeline.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2 text-[11px] text-gray-500 overflow-hidden">
+                <div className="flex -space-x-1.5 shrink-0">
+                  {timeline.slice(0, 4).map((step) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        'w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-[8px]',
+                        step.result === 'success'
+                          ? 'bg-success-100 text-success-600'
+                          : step.result === 'warning'
+                          ? 'bg-warning-100 text-warning-600'
+                          : step.result === 'failed'
+                          ? 'bg-danger-100 text-danger-600'
+                          : 'bg-gray-100 text-gray-500'
+                      )}
+                    >
+                      {getStepIcon(step.type)}
+                    </div>
+                  ))}
+                </div>
+                <span className="truncate">
+                  {stepCount} 步执行 · {hasInspection ? (timeline.filter((s) => s.type === 'facility_inspect').length + '设施巡检 · ') : ''}{hasReport ? (timeline.filter((s) => s.type === 'hazard_report').length + '隐患上报') : '点击查看详情'}
+                </span>
+              </div>
+            )}
+
             {isExpanded && (
-              <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 animate-slide-up">
+              <div className="mt-4 pt-4 border-t border-gray-100 space-y-4 animate-slide-up">
                 <div>
                   <p className="text-xs text-gray-500 mb-1.5 flex items-center gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5" />
@@ -272,6 +371,7 @@ function TaskCard({
                   </p>
                   <p className="text-sm text-gray-700">{task.address}</p>
                 </div>
+
                 {task.description && (
                   <div>
                     <p className="text-xs text-gray-500 mb-1.5 flex items-center gap-1.5">
@@ -283,118 +383,261 @@ function TaskCard({
                     </p>
                   </div>
                 )}
-                <div>
-                  <p className="text-xs text-gray-500 mb-1.5">关联设施</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {task.facilityIds.map((id) => (
-                      <span
-                        key={id}
-                        className="inline-flex items-center px-2 py-0.5 text-[11px] bg-gray-100 text-gray-600 rounded-md font-mono"
-                      >
-                        #{id.slice(-4)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                {task.checkInTime && (
-                  <div className="flex items-center gap-2 text-xs text-success-600 bg-success-50 px-3 py-2 rounded-xl">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>签到时间：{formatTime(task.checkInTime)}</span>
+
+                {distanceToTask !== null && (
+                  <div
+                    className={cn(
+                      'px-3 py-2 rounded-xl text-xs flex items-center gap-2 border',
+                      isNearby
+                        ? 'bg-success-50 text-success-700 border-success-100'
+                        : 'bg-primary-50 text-primary-700 border-primary-100'
+                    )}
+                  >
+                    {isNearby ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>距离任务点 <b>{formatDistance(distanceToTask)}</b>，已在签到范围内</span>
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="w-4 h-4 shrink-0" />
+                        <span>距离任务点 <b>{formatDistance(distanceToTask)}</b>，建议先导航前往</span>
+                      </>
+                    )}
                   </div>
                 )}
-                {task.completeTime && (
-                  <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-xl">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>完成时间：{formatTime(task.completeTime)}</span>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                      关联设施
+                      {relatedFacilities.length > 0 && (
+                        <span className="text-primary-600 font-semibold">({relatedFacilities.length})</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {relatedFacilities.length === 0 ? (
+                      <div className="text-[11px] text-gray-400 px-3 py-2 bg-gray-50 rounded-xl">
+                        暂未关联设施，可在地图中选择巡检
+                      </div>
+                    ) : (
+                      relatedFacilities.slice(0, 4).map((f) => (
+                        <div
+                          key={f.id}
+                          className="flex items-center gap-2 p-2 rounded-xl bg-gray-50 border border-gray-100 cursor-pointer hover:bg-primary-50 hover:border-primary-100 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/facilities/${f.id}`);
+                          }}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0">
+                            <MapPin className="w-4 h-4 text-primary-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-gray-800 truncate">{f.name}</div>
+                            <div className="text-[10px] text-gray-400 truncate">#{f.code}</div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {relatedHazards.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 flex items-center gap-1.5">
+                      <FileWarning className="w-3.5 h-3.5" />
+                      关联隐患 <span className="text-danger-600 font-semibold">({relatedHazards.length})</span>
+                    </p>
+                    <div className="space-y-1.5">
+                      {relatedHazards.map((h) => (
+                        <div key={h.id} className="flex items-start gap-2 p-2 rounded-xl bg-danger-50 border border-danger-100">
+                          <AlertTriangle className="w-3.5 h-3.5 text-danger-500 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-gray-800 truncate">{h.title}</div>
+                            <div className="text-[10px] text-gray-400 truncate">
+                              {h.type} · {relativeTime(h.createTime)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {timeline.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-3 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      执行时间线
+                    </p>
+                    <div className="relative pl-4">
+                      <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gradient-to-b from-primary-200 via-success-200 to-success-300" />
+                      <div className="space-y-3">
+                        {timeline.map((step) => {
+                          const iconColor =
+                            step.result === 'success'
+                              ? 'text-success-600 bg-success-100'
+                              : step.result === 'warning'
+                              ? 'text-warning-600 bg-warning-100'
+                              : step.result === 'failed'
+                              ? 'text-danger-600 bg-danger-100'
+                              : 'text-primary-600 bg-primary-100';
+                          const dotColor =
+                            step.result === 'success'
+                              ? 'bg-success-500'
+                              : step.result === 'warning'
+                              ? 'bg-warning-500'
+                              : step.result === 'failed'
+                              ? 'bg-danger-500'
+                              : 'bg-primary-500';
+                          return (
+                            <div key={step.id} className="relative">
+                              <div
+                                className={cn(
+                                  'absolute -left-4 top-0 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center shadow-sm',
+                                  dotColor
+                                )}
+                              >
+                                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                              </div>
+                              <div className="pl-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <div className={cn('w-5 h-5 rounded-md flex items-center justify-center shrink-0', iconColor)}>
+                                    {getStepIcon(step.type)}
+                                  </div>
+                                  <span className="text-xs font-semibold text-gray-800">
+                                    {getTimelineStepLabel(step.type)}
+                                  </span>
+                                  {step.relatedName && (
+                                    <span className="text-[11px] text-primary-600 font-medium truncate max-w-[180px]">
+                                      · {step.relatedName}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-gray-400 font-mono ml-auto shrink-0">
+                                    {formatDateTime(step.time)}
+                                  </span>
+                                </div>
+                                {step.note && (
+                                  <div className="text-[11px] text-gray-500 mt-0.5 ml-[26px] leading-relaxed">
+                                    {step.note}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isCompleted && task.completeTime && (
+                  <div className="flex items-center gap-2 text-xs text-success-700 bg-gradient-to-r from-success-50 to-emerald-50 border border-success-100 px-3 py-2.5 rounded-xl">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>任务已完成 · {formatDateTime(task.completeTime)}</span>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
-              <button
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle();
-                }}
-              >
-                {isExpanded ? (
-                  <>
-                    <ChevronUp className="w-4 h-4" />
-                    收起详情
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4" />
-                    展开详情
-                  </>
-                )}
-              </button>
+            {!isCompleted && (
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-50">
+                <button
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle();
+                  }}
+                >
+                  <ChevronDown className={cn('w-4 h-4 transition-transform', isExpanded && 'rotate-180')} />
+                  {isExpanded ? '收起' : '展开'}
+                </button>
 
-              <div className="flex items-center gap-2">
-                {task.status === 'pending' && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      leftIcon={<Navigation className="w-4 h-4" />}
-                      onClick={handleStartNavigation}
-                    >
-                      开始导航
-                    </Button>
-                    <Button
-                      variant="twin"
-                      size="sm"
-                      leftIcon={<Play className="w-4 h-4" />}
-                      onClick={handleCheckIn}
-                    >
-                      签到
-                    </Button>
-                  </>
-                )}
-                {task.status === 'in_progress' && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      leftIcon={<Navigation className="w-4 h-4" />}
-                      onClick={handleViewDetail}
-                    >
-                      查看详情
-                    </Button>
+                <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+                  {task.status === 'pending' && (
                     <Button
                       variant="primary"
                       size="sm"
-                      leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                      leftIcon={<Navigation className="w-3.5 h-3.5" />}
+                      onClick={handleStartNavigation}
+                      className="!text-xs"
+                    >
+                      开始导航
+                    </Button>
+                  )}
+
+                  {(task.status === 'pending' || task.status === 'navigating') && canCheckIn && (
+                    <Button
+                      variant={isNearby ? 'primary' : 'outline'}
+                      size="sm"
+                      leftIcon={<Flag className="w-3.5 h-3.5" />}
+                      onClick={handleCheckIn}
+                      className="!text-xs"
+                    >
+                      {isNearby ? '签到' : '远程签到'}
+                    </Button>
+                  )}
+
+                  {(task.status === 'arrived' || task.status === 'inspecting' || task.status === 'in_progress') && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<ClipboardCheck className="w-3.5 h-3.5" />}
+                        onClick={handleGoInspect}
+                        className="!text-xs"
+                      >
+                        设施巡检
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        leftIcon={<FileWarning className="w-3.5 h-3.5" />}
+                        onClick={handleReportHazard}
+                        className="!text-xs"
+                      >
+                        隐患上报
+                      </Button>
+                    </>
+                  )}
+
+                  {canComplete && (
+                    <Button
+                      variant="twin"
+                      size="sm"
+                      leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                       onClick={handleComplete}
+                      className="!text-xs"
                     >
                       完成任务
                     </Button>
-                  </>
-                )}
-                {task.status === 'completed' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    leftIcon={<Navigation className="w-4 h-4" />}
-                    onClick={handleViewDetail}
-                  >
-                    查看详情
-                  </Button>
-                )}
-                {task.status === 'expired' && (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    leftIcon={<AlertCircle className="w-4 h-4" />}
-                    onClick={handleViewDetail}
-                  >
-                    处理超期
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {isCompleted && (
+              <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
+                <span className="text-[11px] text-gray-400">
+                  {formatDateTime(task.completeTime!)} 完成
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle();
+                  }}
+                  className="!text-xs"
+                >
+                  {isExpanded ? '收起时间线' : '查看时间线'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
