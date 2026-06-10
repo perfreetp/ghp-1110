@@ -553,10 +553,10 @@ export const useAppStore = create<AppState>()(
         }),
 
       syncOfflineData: async () => {
+        if (!get().online) return;
         await new Promise((resolve) => setTimeout(resolve, 1200));
         set((state) => {
-          const { online, pendingSyncQueue, syncedHazardIds } = state;
-          if (!online) return state;
+          const { pendingSyncQueue, syncedHazardIds } = state;
           const unsynced = pendingSyncQueue.filter((p) => !syncedHazardIds.includes(p.id));
           // 模拟20%失败率
           const newSynced: string[] = [];
@@ -591,9 +591,8 @@ export const useAppStore = create<AppState>()(
       },
 
       syncSingleHazard: async (hazardId) => {
+        if (!get().online) return false;
         await new Promise((r) => setTimeout(r, 800));
-        const { online } = get();
-        if (!online) return false;
         const rand = Math.random();
         const success = rand > 0.2;
         set((state) => {
@@ -627,14 +626,16 @@ export const useAppStore = create<AppState>()(
       },
 
       retryFailedSync: async (hazardId) => {
+        if (!get().online) return false;
         await new Promise((r) => setTimeout(r, 800));
-        const { online } = get();
-        if (!online) return false;
         const rand = Math.random();
         const success = rand > 0.15;
         set((state) => {
           const now = new Date().toISOString();
           return {
+            pendingSyncQueue: success
+              ? state.pendingSyncQueue.filter((p) => p.id !== hazardId)
+              : state.pendingSyncQueue,
             syncedHazardIds: success
               ? [...state.syncedHazardIds, hazardId]
               : state.syncedHazardIds,

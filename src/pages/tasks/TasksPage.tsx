@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/layout/PageHeader';
 import Button from '@/components/ui/Button';
-import { Card, StatusBadge, Tag, EmptyState, SearchBar, Divider, InfoRow } from '@/components/ui';
+import { Card, StatusBadge, Tag, EmptyState, SearchBar, Divider, InfoRow, Modal } from '@/components/ui';
+import FacilityIcon from '@/components/common/FacilityIcon';
 import { useAppStore } from '@/store/useAppStore';
 import {
   formatTime,
@@ -13,6 +14,7 @@ import {
   getStatusConfig,
   getTaskTypeName,
   getTimelineStepLabel,
+  getFacilityStatusConfig,
   cn,
   haversineDistance,
 } from '@/utils';
@@ -34,8 +36,12 @@ import {
   ClipboardCheck,
   FileWarning,
   Flag,
+  Search,
+  X as CloseX,
+  User,
+  Check as CheckIcon,
 } from 'lucide-react';
-import type { Task, TaskStatus, TaskTimelineStep } from '@/types';
+import type { Task, TaskStatus, TaskTimelineStep, Facility, FacilityStatus } from '@/types';
 
 type FilterKey = 'all' | TaskStatus;
 
@@ -156,10 +162,12 @@ function TaskCard({
   task,
   isExpanded,
   onToggle,
+  onInspect,
 }: {
   task: Task;
   isExpanded: boolean;
   onToggle: () => void;
+  onInspect?: () => void;
 }) {
   const navigate = useNavigate();
   const priorityConfig = getPriorityConfig(task.priority);
@@ -228,6 +236,10 @@ function TaskCard({
 
   const handleGoInspect = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (onInspect) {
+      onInspect();
+      return;
+    }
     setNavTarget({
       type: 'task',
       id: task.id,
@@ -647,9 +659,18 @@ function TaskCard({
 
 export default function TasksPage() {
   const tasks = useAppStore((s) => s.tasks);
+  const facilities = useAppStore((s) => s.facilities);
+  const user = useAppStore((s) => s.user);
+  const addFacilityInspection = useAppStore((s) => s.addFacilityInspection);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [inspectModalOpen, setInspectModalOpen] = useState(false);
+  const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
+  const [selectedInspectFacilityId, setSelectedInspectFacilityId] = useState<string | null>(null);
+  const [inspectStatus, setInspectStatus] = useState<FacilityStatus>('normal');
+  const [inspectNote, setInspectNote] = useState('');
+  const [submittingInspect, setSubmittingInspect] = useState(false);
 
   const stats = useMemo(() => {
     const total = tasks.length;
@@ -814,11 +835,247 @@ export default function TasksPage() {
                 onToggle={() =>
                   setExpandedId(expandedId === task.id ? null : task.id)
                 }
+                onInspect={() => {
+                  setInspectTaskId(task.id);
+                  setSelectedInspectFacilityId(task.facilityIds?.[0] || null);
+                  setInspectStatus('normal');
+                  setInspectNote('');
+                  setInspectModalOpen(true);
+                }}
               />
             ))}
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={inspectModalOpen}
+        onClose={() => {
+          setInspectModalOpen(false);
+          setInspectTaskId(null);
+          setSelectedInspectFacilityId(null);
+          setInspectNote('');
+          setSubmittingInspect(false);
+        }}
+        title="设施巡检"
+        className="!max-w-md"
+      >
+        {(() => {
+          const task = inspectTaskId ? tasks.find((t) => t.id === inspectTaskId) : null;
+          const taskFacilities = task
+            ? facilities.filter((f) => task.facilityIds.includes(f.id))
+            : [];
+          const nearbyFacilities = facilities.filter((f) => !task?.facilityIds.includes(f.id));
+          const canSubmit = selectedInspectFacilityId && !submittingInspect;
+          const handleSubmit = async () => {
+            if (!canSubmit || !selectedInspectFacilityId || !inspectTaskId) return;
+            setSubmittingInspect(true);
+            try {
+              await new Promise((r) => setTimeout(r, 500));
+              addFacilityInspection({
+                facilityId: selectedInspectFacilityId,
+                taskId: inspectTaskId,
+                inspector: user?.name || '网格员',
+                status: inspectStatus,
+                note: inspectNote.trim() || undefined,
+              });
+            } finally {
+              setSubmittingInspect(false);
+              setInspectModalOpen(false);
+              setInspectTaskId(null);
+              setSelectedInspectFacilityId(null);
+              setInspectNote('');
+              if (inspectTaskId) setExpandedId(inspectTaskId);
+            }
+          };
+          return (
+            <div className="space-y-5">
+              {task && (
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-primary-50 border border-primary-100">
+                  <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center shrink-0">
+                    <ClipboardCheck className="w-4 h-4 text-primary-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-primary-700">关联任务</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate mt-0.5">{task.title}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">#{task.id.slice(-6)} · {task.address}</p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-primary-500" />
+                  选择设施
+                  <span className="text-[10px] text-danger-500 font-normal ml-0.5">*</span>
+                </label>
+
+                <div className="space-y-2">
+                  {taskFacilities.length > 0 && (
+                    <>
+                      <div className="text-[11px] text-gray-400 flex items-center gap-1 px-1">
+                        <CheckIcon className="w-3 h-3" /> 任务关联设施
+                      </div>
+                      {taskFacilities.map((f) => (
+                        <FacilityOption
+                          key={f.id}
+                          facility={f}
+                          active={selectedInspectFacilityId === f.id}
+                          onClick={() => setSelectedInspectFacilityId(f.id)}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {nearbyFacilities.length > 0 && (
+                    <>
+                      <div className="text-[11px] text-gray-400 flex items-center gap-1 px-1 pt-1">
+                        <Search className="w-3 h-3" /> 其他可选设施
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                        {nearbyFacilities.slice(0, 10).map((f) => (
+                          <FacilityOption
+                            key={f.id}
+                            facility={f}
+                            active={selectedInspectFacilityId === f.id}
+                            onClick={() => setSelectedInspectFacilityId(f.id)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-primary-500" />
+                  现场状态
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(
+                    [
+                      { value: 'normal', label: '正常', cls: 'border-success-400 bg-success-50 text-success-600 ring-2 ring-success-100' },
+                      { value: 'warning', label: '异常', cls: 'border-warning-400 bg-warning-50 text-warning-600 ring-2 ring-warning-100' },
+                      { value: 'damaged', label: '损坏', cls: 'border-danger-400 bg-danger-50 text-danger-600 ring-2 ring-danger-100' },
+                      { value: 'offline', label: '停用', cls: 'border-gray-400 bg-gray-50 text-gray-600 ring-2 ring-gray-100' },
+                    ] as { value: FacilityStatus; label: string; cls: string }[]
+                  ).map((s) => {
+                    const isActive = inspectStatus === s.value;
+                    return (
+                      <button
+                        key={s.value}
+                        onClick={() => setInspectStatus(s.value)}
+                        className={cn(
+                          'py-2.5 rounded-xl border text-xs font-medium transition-all',
+                          isActive ? s.cls : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'
+                        )}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <Edit3 className="w-4 h-4 text-primary-500" />
+                  巡检备注
+                  <span className="text-[10px] text-gray-400 font-normal ml-1">（可选）</span>
+                </label>
+                <textarea
+                  value={inspectNote}
+                  onChange={(e) => setInspectNote(e.target.value)}
+                  rows={3}
+                  maxLength={200}
+                  placeholder="请输入巡检中发现的问题、处理建议或其他需要说明的事项..."
+                  className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 focus:border-primary-300 focus:bg-white focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm resize-none placeholder:text-gray-400"
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[10px] text-gray-400">支持换行</span>
+                  <span className={`text-[10px] ${inspectNote.length > 180 ? 'text-danger-500' : 'text-gray-400'}`}>
+                    {inspectNote.length}/200
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                <User className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-[11px] text-gray-400">巡检人</p>
+                  <p className="text-xs font-medium text-gray-700">{user?.name || '网格员'} · {new Date().toLocaleDateString('zh-CN')}</p>
+                </div>
+              </div>
+
+              <Divider />
+
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  size="full"
+                  onClick={() => {
+                    setInspectModalOpen(false);
+                    setInspectTaskId(null);
+                    setSelectedInspectFacilityId(null);
+                    setInspectNote('');
+                  }}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="full"
+                  loading={submittingInspect}
+                  leftIcon={<ClipboardCheck className="w-4 h-4" />}
+                  disabled={!canSubmit}
+                  onClick={handleSubmit}
+                >
+                  提交巡检
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
+  );
+}
+
+function FacilityOption({
+  facility,
+  active,
+  onClick,
+}: {
+  facility: Facility;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const cfg = getFacilityStatusConfig(facility.status);
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left',
+        active
+          ? 'border-primary-400 bg-primary-50/50 ring-2 ring-primary-100 shadow-sm'
+          : 'border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-white'
+      )}
+    >
+      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', cfg.bg)}>
+        <FacilityIcon type={facility.type} size="sm" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-semibold text-gray-800 truncate">{facility.name}</p>
+          <StatusBadge label={cfg.label} variant={cfg.color === 'text-success-600' ? 'success' : cfg.color === 'text-warning-600' ? 'warning' : cfg.color === 'text-danger-600' ? 'danger' : 'default'} size="sm" />
+        </div>
+        <p className="text-[11px] text-gray-400 truncate mt-0.5">{facility.location}</p>
+      </div>
+      {active && (
+        <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center shrink-0 shadow-sm shadow-primary-500/30">
+          <CheckIcon className="w-3.5 h-3.5 text-white" />
+        </div>
+      )}
+    </button>
   );
 }

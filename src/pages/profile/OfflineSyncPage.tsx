@@ -42,6 +42,7 @@ function ReportCard({
   onSync,
   onRetry,
   syncingId,
+  online,
 }: {
   report: HazardReport;
   variant: TabType;
@@ -49,9 +50,11 @@ function ReportCard({
   onSync?: () => void;
   onRetry?: () => void;
   syncingId?: string | null;
+  online?: boolean;
 }) {
   const levelConfig = getHazardLevelConfig(report.level);
   const isSyncing = syncingId === report.id;
+  const syncDisabled = !online || isSyncing;
   const syncStatus = variant === 'pending' ? 'pending' : variant === 'failed' ? 'failed' : 'synced';
 
   return (
@@ -112,10 +115,10 @@ function ReportCard({
                 size="sm"
                 leftIcon={isSyncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CloudUpload className="w-3.5 h-3.5" />}
                 onClick={onSync}
-                disabled={isSyncing}
+                disabled={syncDisabled}
                 className="!text-xs !px-3"
               >
-                {isSyncing ? '同步中' : '单条同步'}
+                {!online ? '请连接网络' : isSyncing ? '同步中' : '单条同步'}
               </Button>
             )}
             {variant === 'failed' && (
@@ -124,10 +127,10 @@ function ReportCard({
                 size="sm"
                 leftIcon={isSyncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 onClick={onRetry}
-                disabled={isSyncing}
+                disabled={syncDisabled}
                 className="!text-xs !px-3"
               >
-                {isSyncing ? '重试中' : '重试'}
+                {!online ? '请连接网络' : isSyncing ? '重试中' : '重试'}
               </Button>
             )}
             {variant === 'synced' && report.syncTime && (
@@ -195,6 +198,7 @@ export default function OfflineSyncPage() {
       : failedReports;
 
   const handleBatchSync = async () => {
+    if (!online) return;
     setBatchSyncing(true);
     try {
       await syncOfflineData();
@@ -204,6 +208,7 @@ export default function OfflineSyncPage() {
   };
 
   const handleSingleSync = async (id: string) => {
+    if (!online) return;
     setSyncingId(id);
     try {
       await syncSingleHazard(id);
@@ -213,6 +218,7 @@ export default function OfflineSyncPage() {
   };
 
   const handleRetry = async (id: string) => {
+    if (!online) return;
     setSyncingId(id);
     try {
       await retryFailedSync(id);
@@ -383,6 +389,7 @@ export default function OfflineSyncPage() {
               onSync={() => handleSingleSync(report.id)}
               onRetry={() => handleRetry(report.id)}
               syncingId={syncingId}
+              online={online}
             />
           ))
         )}

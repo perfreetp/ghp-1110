@@ -26,6 +26,7 @@ import {
   FileText,
   Activity,
   X as IconX,
+  Flag,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { Card, StatusBadge, Tag, EmptyState, Modal, InfoRow, Divider } from '@/components/ui';
@@ -107,6 +108,8 @@ export default function MapPage() {
   const updateFacilitySiteInfo = useAppStore((s) => s.updateFacilitySiteInfo);
   const navTarget = useAppStore((s) => s.navTarget);
   const clearNavTarget = useAppStore((s) => s.clearNavTarget);
+  const checkInTask = useAppStore((s) => s.checkInTask);
+  const tasks = useAppStore((s) => s.tasks);
 
   const [searchKeyword, setSearchKeyword] = useState('');
   const [activeLayers, setActiveLayers] = useState<Set<LayerType>>(new Set(['facilities', 'heatmap', 'track']));
@@ -128,6 +131,7 @@ export default function MapPage() {
   const [sitePhotos, setSitePhotos] = useState<{ id: string; url: string }[]>([]);
   const [siteNote, setSiteNote] = useState('');
   const [siteStatus, setSiteStatus] = useState<Facility['status']>('normal');
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -703,16 +707,68 @@ export default function MapPage() {
                     </div>
                   </div>
                 </div>
-                {navTarget.type === 'task' && navTarget.id && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
-                    <Button variant="outline" size="sm" leftIcon={<CheckCircle2 className="w-4 h-4" />} className="flex-1 !text-xs">
-                      任务签到
-                    </Button>
-                    <Button variant="primary" size="sm" leftIcon={<Eye className="w-4 h-4" />} className="flex-1 !text-xs" onClick={() => navigate('/')}>
-                      查看任务
-                    </Button>
-                  </div>
-                )}
+                {navTarget.type === 'task' && navTarget.id && (() => {
+                  const navDistance = currentPosition
+                    ? Math.round(haversineDistance(currentPosition.lat, currentPosition.lng, navTarget.lat, navTarget.lng))
+                    : null;
+                  const navTask = tasks.find((t) => t.id === navTarget.id);
+                  const isTaskNearby = navDistance !== null && navDistance < 100;
+                  const isAlreadyArrived = navTask?.status === 'arrived' || navTask?.status === 'inspecting' || navTask?.status === 'in_progress' || navTask?.status === 'completed';
+                  const checkInStep = navTask?.timeline?.find((s) => s.type === 'check_in');
+                  const canCheckIn = !isCheckingIn && !isAlreadyArrived && (isTaskNearby || true);
+                  const handleTaskCheckIn = async () => {
+                    if (!canCheckIn || !currentPosition) return;
+                    setIsCheckingIn(true);
+                    try {
+                      await new Promise((r) => setTimeout(r, 500));
+                      checkInTask(navTarget.id!, {
+                        lat: currentPosition.lat,
+                        lng: currentPosition.lng,
+                      });
+                    } finally {
+                      setIsCheckingIn(false);
+                    }
+                  };
+                  return (
+                    <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                      {checkInStep && (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-success-50 border border-success-100">
+                          <CheckCircle2 className="w-4 h-4 text-success-600 shrink-0" />
+                          <div className="text-[11px] text-success-700 leading-snug flex-1">
+                            <span className="font-semibold">已签到 · {checkInStep.note || '任务地点附近'}</span>
+                            <br />
+                            <span className="text-success-600">{checkInStep.time ? formatDateTime(checkInStep.time) : ''}</span>
+                            {checkInStep.result && <span className="ml-1">· {checkInStep.result}</span>}
+                          </div>
+                        </div>
+                      )}
+                      {!isTaskNearby && !isAlreadyArrived && (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-warning-50 border border-warning-100">
+                          <Navigation className="w-4 h-4 text-warning-600 shrink-0" />
+                          <span className="text-[11px] text-warning-700 leading-snug">
+                            距离目标约 <b>{navDistance !== null ? formatDistance(navDistance) : '-'}</b>，建议到达 100m 范围内后签到
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          variant={isAlreadyArrived ? 'twin' : isTaskNearby ? 'primary' : 'outline'}
+                          size="sm"
+                          loading={isCheckingIn}
+                          leftIcon={isAlreadyArrived ? <CheckCircle2 className="w-4 h-4" /> : isTaskNearby ? <Flag className="w-4 h-4" /> : <Navigation className="w-4 h-4" />}
+                          disabled={isCheckingIn || isAlreadyArrived || false}
+                          onClick={handleTaskCheckIn}
+                          className="flex-1 !text-xs"
+                        >
+                          {isCheckingIn ? '签到中...' : isAlreadyArrived ? '已完成签到' : isTaskNearby ? '立即签到' : '远程签到'}
+                        </Button>
+                        <Button variant="primary" size="sm" leftIcon={<Eye className="w-4 h-4" />} className="flex-1 !text-xs" onClick={() => navigate('/')}>
+                          查看任务
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </Card>
